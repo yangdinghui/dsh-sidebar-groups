@@ -10,10 +10,11 @@
   .kB3qhq_logoRow { display: flex; align-items: center; height: 60px; }
   .kB3qhq_newSession { height: 38px; }
   .kB3qhq_panelList { display: flex; flex-direction: column; gap: 2px; }
+  /* 照抄真实 Shell 的 .panelRow：line-height:22px 是关键，图标基线下沉就是它放大的 */
   .kB3qhq_panelRow {
     display: flex; align-items: center; gap: 8px; min-height: 36px;
     padding: 7px 8px; margin: 0 2px; border: 0; background: transparent;
-    font: inherit; text-align: left; cursor: pointer;
+    font: inherit; font-size: 14px; line-height: 22px; text-align: left; cursor: pointer;
   }
   .kB3qhq_panelRow:hover { background: rgba(127, 127, 127, .14); }
   .kB3qhq_panelRow.panelActive { background: rgba(127, 127, 127, .2); }
@@ -55,7 +56,8 @@
     row.type = 'button';
     row.className = 'kB3qhq_panelRow' + (active ? ' panelActive' : '');
     row.setAttribute('aria-label', label);
-    row.innerHTML = `<span class="kB3qhq_panelGlyph">◆</span><span class="kB3qhq_panelTitle kB3qhq_wide">${label}</span>`;
+    // 与真实 Shell 一致：glyph 里放一个 16×16 的 SVG（不是文字），才能量出图标对齐。
+    row.innerHTML = `<span class="kB3qhq_panelGlyph"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3"/></svg></span><span class="kB3qhq_panelTitle kB3qhq_wide">${label}</span>`;
     return row;
   }
 
@@ -158,6 +160,23 @@
     check('常驻行可见', window.getComputedStyle(rowByLabel('插件')).display !== 'none');
     check('aria-expanded=false', header().getAttribute('aria-expanded') === 'false');
     check('折叠时工具行仍然可见', window.getComputedStyle(header()).display !== 'none');
+
+    // 4.5 图标对齐：量 SVG 本身（不是外层 span——span 被 flex 居中不代表里面的图标居中）
+    const headerGlyph = header().querySelector('.dsh-fold-icon svg').getBoundingClientRect();
+    const peerGlyph = rowByLabel('插件').querySelector('span svg').getBoundingClientRect();
+    check('图标左边对齐', Math.abs(headerGlyph.left - peerGlyph.left) <= 0.5, `${headerGlyph.left} vs ${peerGlyph.left}`);
+    check('图标宽度一致', Math.abs(headerGlyph.width - peerGlyph.width) <= 0.5, `${headerGlyph.width} vs ${peerGlyph.width}`);
+    const headerBox = header().getBoundingClientRect();
+    const headerIconCenter = headerGlyph.top + headerGlyph.height / 2;
+    const headerRowCenter = headerBox.top + headerBox.height / 2;
+    check('图标垂直居中', Math.abs(headerIconCenter - headerRowCenter) <= 1, `${headerIconCenter} vs ${headerRowCenter}`);
+    const peerBox = rowByLabel('插件').getBoundingClientRect();
+    const peerDelta = peerGlyph.top + peerGlyph.height / 2 - (peerBox.top + peerBox.height / 2);
+    check(
+      '图标与相邻行同一垂直偏移',
+      Math.abs(headerIconCenter - headerRowCenter - peerDelta) <= 1,
+      `header ${(headerIconCenter - headerRowCenter).toFixed(2)} vs peer ${peerDelta.toFixed(2)}`,
+    );
 
     // 5. 点击展开
     header().click();
