@@ -106,14 +106,24 @@ dsh plugin --profile <profile> add ./dsh-sidebar-groups-0.1.0.tgz
 默认分组、折叠、拖动归组、右键菜单、持久化、React 重建自愈、图标轨模式、重载恢复。
 
 ```sh
-cd dsh-sidebar-groups
-python3 -m http.server 8791 --bind 127.0.0.1 &
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --headless=new --disable-gpu --virtual-time-budget=15000 \
-  --dump-dom http://127.0.0.1:8791/test/harness.html | grep -A2 'RESULT:'
+npm test
 ```
 
-期望输出 `RESULT: PASS (40/40)`。
+它会在本机起一个临时 HTTP 服务，用无头 Chrome 打开 `test/harness.html`，期望输出
+`RESULT: PASS (40/40)`。找不到 Chrome 时用 `CHROME_BIN=/path/to/chrome npm test`。
+
+## 发布新版本
+
+改完代码要同步到 GitHub 和 npm：
+
+```sh
+npm test                        # 1. 自测
+npm version patch -m "release: v%s"   # 2. 升版本（会 commit + 打 tag）
+git push --follow-tags          # 3. 推 GitHub
+npm publish                     # 4. 发 npm（输 2FA 验证码）
+```
+
+细节和「哪些东西不用重新提 PR」见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 许可
 
