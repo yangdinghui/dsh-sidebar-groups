@@ -1,0 +1,13 @@
+# dsh-sidebar-groups bundle patch: 把一个插件行插进 web 组合。
+#
+# 宿主半侧（lib/index.js）是一个空插件，只负责让这一行存在；
+# 真正的效果全部发生在浏览器半侧（lib/client.js，package.json 的
+# dsh.client 声明会让宿主把它作为 /plugins/dsh-sidebar-groups/client.js 提供）。
+#
+# 安装：
+#   dsh plugin --profile <name> add link:<本目录绝对路径>
+# 或在 Web GUI「插件」页 → 添加插件 → 填本目录的绝对路径。
+
+- insert:
+    - id: dsh-sidebar-groups
+      name: dsh-sidebar-groups

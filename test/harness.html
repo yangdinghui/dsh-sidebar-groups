@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-sidebar-groups harness</title>
+<style>
+  body { font: 13px/1.5 -apple-system, sans-serif; margin: 0; }
+  /* 外壳里 .panelList 是 column flex；harness 必须照抄，否则 order 无从验证。 */
+  .kB3qhq_root { display: flex; flex-direction: column; width: 260px; }
+  .kB3qhq_logoRow { display: flex; align-items: center; height: 60px; }
+  .kB3qhq_newSession { height: 38px; }
+  .kB3qhq_panelList { display: flex; flex-direction: column; gap: 2px; }
+  .kB3qhq_panelRow {
+    display: flex; align-items: center; gap: 8px; min-height: 36px;
+    padding: 7px 8px; margin: 0 2px; border: 0; background: transparent;
+    font: inherit; text-align: left; cursor: pointer;
+  }
+  .kB3qhq_panelRow:hover { background: rgba(127, 127, 127, .14); }
+  .kB3qhq_panelRow.panelActive { background: rgba(127, 127, 127, .2); }
+  .kB3qhq_panelGlyph { display: inline-flex; width: 16px; }
+  .kB3qhq_moreAnchor { display: flex; flex-direction: column; }
+  #out { white-space: pre-wrap; font-family: ui-monospace, monospace; }
+</style>
+<script>
+  // 模拟宿主注入的模块队列（见 dsh-client-modules 的 queue 模式）。
+  window.__ModuleLoader__ = {
+    registrations: [],
+    load(registration) { this.registrations.push(registration); },
+  };
+</script>
+</head>
+<body>
+<div class="dshDesktopUpstreamSidebar">
+  <div class="kB3qhq_root" id="root">
+    <div class="kB3qhq_topStrip"></div>
+    <div class="kB3qhq_logoRow">
+      <button class="kB3qhq_iconButton kB3qhq_toggle" aria-label="收起侧边栏">≡</button>
+      <span class="kB3qhq_brand">deepseek HARNESS</span>
+    </div>
+    <button class="kB3qhq_newSession">新会话</button>
+    <nav class="kB3qhq_panelList" id="nav" aria-label="面板"></nav>
+    <div class="kB3qhq_regionArea">工作区 / 会话</div>
+  </div>
+</div>
+<pre id="out">running…</pre>
+
+<script>
+  window.__errors = [];
+  window.addEventListener('error', (e) => { window.__errors.push(String(e.message || e.error)); });
+  window.addEventListener('unhandledrejection', (e) => { window.__errors.push('rejection: ' + String(e.reason)); });
+  const LABELS = ['插件', '插件市场', '自动化任务', '任务看板', '上下文洞察', '灵枢', '记忆系统'];
+
+  function buildRow(label, active) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'kB3qhq_panelRow' + (active ? ' panelActive' : '');
+    row.setAttribute('aria-label', label);
+    row.innerHTML = `<span class="kB3qhq_panelGlyph">◆</span><span class="kB3qhq_panelTitle kB3qhq_wide">${label}</span>`;
+    return row;
+  }
+
+  function buildNav() {
+    const nav = document.createElement('nav');
+    nav.className = 'kB3qhq_panelList';
+    nav.setAttribute('aria-label', '面板');
+    LABELS.forEach((label, index) => nav.append(buildRow(label, index === 0)));
+    const more = document.createElement('div');
+    more.className = 'kB3qhq_moreAnchor';
+    const moreButton = document.createElement('button');
+    moreButton.className = 'kB3qhq_panelRow';
+    moreButton.setAttribute('aria-label', '更多');
+    moreButton.textContent = '更多';
+    more.append(moreButton);
+    nav.append(more);
+    return nav;
+  }
+
+  document.getElementById('nav').replaceWith(buildNav());
+  document.getElementById('nav')?.removeAttribute('id');
+
+  const results = [];
+  function check(name, condition, detail) {
+    results.push({ name, ok: Boolean(condition), detail });
+    const box = document.getElementById('out');
+    if (box) box.textContent = results.map((item) => `${item.ok ? 'PASS' : 'FAIL'}  ${item.name}`).join('\n') + '\n…still running';
+  }
+
+  const waitFrame = () => Promise.race([
+    new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    new Promise((resolve) => setTimeout(resolve, 120)),
+  ]);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function rowByLabel(label) {
+    return Array.from(document.querySelectorAll('nav button[class*="panelRow"]'))
+      .find((row) => row.getAttribute('aria-label') === label);
+  }
+  function header() {
+    return document.querySelector('[data-dsh-fold-header]');
+  }
+  function nav() {
+    return document.querySelector('nav[class*="panelList"]');
+  }
+  function zoneOf(label) {
+    return rowByLabel(label).getAttribute('data-dsh-fold-zone');
+  }
+  function dirState() {
+    return window.__dshSidebarFoldDebug.state();
+  }
+
+  function fireDrag(type, target, dataTransfer) {
+    const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  function dragRowTo(label, targetLabel) {
+    const source = rowByLabel(label);
+    const target = targetLabel === null ? header() : rowByLabel(targetLabel);
+    const dataTransfer = new DataTransfer();
+    fireDrag('dragstart', source, dataTransfer);
+    fireDrag('dragover', target, dataTransfer);
+    fireDrag('drop', target, dataTransfer);
+    fireDrag('dragend', source, dataTransfer);
+  }
+
+  window.addEventListener('load', async () => {
+   try {
+    // 1. 物化 bundle：模拟模块被 import 时执行 factory。
+    const registration = window.__ModuleLoader__.registrations[0];
+    check('bundle 注册了 id', registration?.id === 'dsh-sidebar-groups', registration?.id ?? 'missing');
+    const mod = registration.factory((specifier) => {
+      throw new Error('unexpected external: ' + specifier);
+    });
+    check('导出 name/inject/apply', mod.name === 'dsh-sidebar-groups' && Array.isArray(mod.inject) && typeof mod.apply === 'function');
+
+    mod.apply({});
+    await waitFrame();
+
+    // 2. 结构：工具行 + 默认分组
+    check('插入了「工具」行', header() !== null);
+    check('工具行文案', header()?.textContent.includes('工具') && header()?.textContent.includes('5'));
+    check('默认常驻：插件', zoneOf('插件') === 'pinned');
+    check('默认常驻：自动化任务', zoneOf('自动化任务') === 'pinned');
+    check('默认收进工具：插件市场', zoneOf('插件市场') === 'tools');
+    check('默认收进工具：记忆系统', zoneOf('记忆系统') === 'tools');
+    check('未跟进工具组：更多仍可见', document.querySelector('.kB3qhq_moreAnchor')?.getAttribute('data-dsh-fold-zone') === null);
+
+    // 3. order 关系：常驻 < 工具行 < 工具成员
+    const pinnedOrder = Number(rowByLabel('插件').style.order);
+    const headerOrder = Number(header().style.order);
+    const toolsOrder = Number(rowByLabel('任务看板').style.order);
+    check('order 排序正确', pinnedOrder < headerOrder && headerOrder < toolsOrder,
+      `${pinnedOrder} < ${headerOrder} < ${toolsOrder}`);
+
+    // 4. 默认收起
+    check('默认收起', window.getComputedStyle(rowByLabel('任务看板')).display === 'none');
+    check('常驻行可见', window.getComputedStyle(rowByLabel('插件')).display !== 'none');
+    check('aria-expanded=false', header().getAttribute('aria-expanded') === 'false');
+    check('折叠时工具行仍然可见', window.getComputedStyle(header()).display !== 'none');
+
+    // 5. 点击展开
+    header().click();
+    await waitFrame();
+    check('点击后展开', window.getComputedStyle(rowByLabel('任务看板')).display !== 'none');
+    check('aria-expanded=true', header().getAttribute('aria-expanded') === 'true');
+
+    // 6. 拖动：常驻行 → 工具行
+    dragRowTo('自动化任务', null);
+    await waitFrame();
+    check('拖到工具行后归入 tools', zoneOf('自动化任务') === 'tools');
+    check('常驻只剩插件', dirState().pinned.join(',') === '插件', JSON.stringify(dirState().pinned));
+    check('工具计数变 6', header().textContent.includes('6'));
+
+    // 7. 拖动：工具行 → 常驻行（插到目标前面）
+    dragRowTo('任务看板', '插件');
+    await waitFrame();
+    check('从工具拉出并插到插件前', dirState().pinned.join(',') === '任务看板,插件', JSON.stringify(dirState().pinned));
+    check('任务看板回到 pinned', zoneOf('任务看板') === 'pinned');
+    check('pinned order 反映数组顺序',
+      Number(rowByLabel('任务看板').style.order) < Number(rowByLabel('插件').style.order));
+
+    // 8. 拖动：常驻内换位
+    dragRowTo('插件', '任务看板');
+    await waitFrame();
+    check('常驻内可换位', dirState().pinned.join(',') === '插件,任务看板', JSON.stringify(dirState().pinned));
+
+    // 9. 右键菜单
+    rowByLabel('记忆系统').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 120 }));
+    await waitFrame();
+    const menu = document.querySelector('.dsh-fold-menu');
+    check('右键出现菜单', menu !== null);
+    check('菜单项是「固定到顶部」', menu?.textContent.includes('固定到顶部'), menu?.textContent ?? '');
+    menu?.querySelector('button')?.click();
+    await waitFrame();
+    check('菜单操作后记忆系统常驻', dirState().pinned.includes('记忆系统'), JSON.stringify(dirState().pinned));
+    check('菜单已关闭', document.querySelector('.dsh-fold-menu') === null);
+
+    // 10. 持久化
+    const saved = JSON.parse(window.localStorage.getItem('dsh.sidebar-groups.v1'));
+    check('localStorage 写入 pinned', Array.isArray(saved?.pinned) && saved.pinned.includes('记忆系统'), JSON.stringify(saved));
+    check('localStorage 写入 collapsed', saved?.collapsed === false, String(saved?.collapsed));
+
+    // 11. 自愈：模拟 React 重建整个 nav
+    const fresh = buildNav();
+    nav().replaceWith(fresh);
+    await wait(80);
+    await waitFrame();
+    check('重建后「工具」行自动补回', header() !== null);
+    check('重建后分组沿用状态', zoneOf('记忆系统') === 'pinned' && zoneOf('插件市场') === 'tools');
+    check('重建后恢复展开态', window.getComputedStyle(rowByLabel('插件市场')).display !== 'none');
+
+    // 12. 图标轨模式：隐藏「工具」行，且不隐藏工具成员
+    document.getElementById('root').classList.add('kB3qhq_collapsed');
+    await wait(30);
+    await waitFrame();
+    check('图标轨下隐藏工具行', header().hidden === true);
+    check('图标轨下不折叠工具成员', window.getComputedStyle(rowByLabel('插件市场')).display !== 'none');
+    document.getElementById('root').classList.remove('kB3qhq_collapsed');
+    await wait(30);
+    await waitFrame();
+    check('退出图标轨后恢复', header().hidden === false);
+
+    // 13. 折叠状态在自愈后仍然生效
+    header().click();
+    await waitFrame();
+    check('再次收起', window.getComputedStyle(rowByLabel('插件市场')).display === 'none');
+
+    // 14. 模拟刷新页面：新的模块实例从 localStorage 恢复
+    const beforeReload = dirState();
+    window.__dshSidebarFoldDispose();
+    await wait(20);
+    check('dispose 后移除工具行', document.querySelector('[data-dsh-fold-header]') === null);
+    const mod2 = registration.factory((specifier) => {
+      throw new Error('unexpected external: ' + specifier);
+    });
+    mod2.apply({});
+    await wait(150);
+    await waitFrame();
+    check('重载后恢复折叠状态', dirState().collapsed === beforeReload.collapsed, `${dirState().collapsed} vs ${beforeReload.collapsed}`);
+    check('重载后恢复常驻列表', JSON.stringify(dirState().pinned) === JSON.stringify(beforeReload.pinned), JSON.stringify(dirState().pinned));
+    check('重载后按恢复状态渲染', window.getComputedStyle(rowByLabel('插件市场')).display === 'none');
+
+    const failed = results.filter((item) => !item.ok);
+    const lines = results.map((item) => `${item.ok ? 'PASS' : 'FAIL'}  ${item.name}${item.detail ? '  [' + item.detail + ']' : ''}`);
+    lines.push('', `RESULT: ${failed.length === 0 ? 'PASS' : 'FAIL'} (${results.length - failed.length}/${results.length})`);
+    document.getElementById('out').textContent = lines.join('\n');
+    document.title = failed.length === 0 ? 'PASS' : 'FAIL';
+   } catch (error) {
+    document.getElementById('out').textContent = 'THREW: ' + (error && error.stack || error) + '\n' + results.map(r => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}`).join('\n');
+    document.title = 'FAIL';
+   }
+  });
+</script>
+
+<script src="../lib/client.js"></script>
+</body>
+</html>

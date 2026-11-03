@@ -1,0 +1,56 @@
+{
+  "name": "dsh-sidebar-groups",
+  "version": "0.1.0",
+  "description": "Groups the DSH sidebar panel rows: two stay pinned, the rest fold under a collapsible Tools row, and rows can be dragged between the two groups. 侧边栏面板分组：两行常驻，其余收进可折叠的「工具」组，支持拖动互相搬运。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "assets",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "icon": "assets/icon-180.png",
+  "license": "MIT",
+  "author": "yangdinghui",
+  "homepage": "https://github.com/yangdinghui/dsh-sidebar-groups#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yangdinghui/dsh-sidebar-groups.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yangdinghui/dsh-sidebar-groups/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "sidebar",
+    "panel",
+    "group",
+    "ui",
+    "cordis"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  }
+}
