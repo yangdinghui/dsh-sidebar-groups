@@ -25,9 +25,25 @@ const CHROME_CANDIDATES = [
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
   '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
   '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
+  '/opt/google/chrome/chrome',
+  '/opt/google/chrome/google-chrome',
 ].filter(Boolean)
+
+/** 在 PATH 里找 Chrome（GitHub Actions 的 runner 把 google-chrome 放在 PATH 里）。 */
+function chromeFromPath() {
+  const names = ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'chrome']
+  for (const dir of (process.env.PATH ?? '').split(':')) {
+    if (dir.length === 0) continue
+    for (const name of names) {
+      const candidate = `${dir}/${name}`
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return undefined
+}
 
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -61,7 +77,7 @@ const server = createServer(async (request, response) => {
 await new Promise((done) => server.listen(0, '127.0.0.1', done))
 const { port } = server.address()
 
-const chrome = CHROME_CANDIDATES.find((candidate) => existsSync(candidate))
+const chrome = CHROME_CANDIDATES.find((candidate) => existsSync(candidate)) ?? chromeFromPath()
 if (chrome === undefined) {
   console.error('找不到 Chrome。装一个，或用 CHROME_BIN=/path/to/chrome npm test')
   server.close()
@@ -75,6 +91,8 @@ try {
     [
       '--headless=new',
       '--disable-gpu',
+      // CI 容器里常常没有 user namespace，Chromium 的沙箱会直接起不来
+      ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
       '--no-first-run',
       '--no-default-browser-check',
       `--user-data-dir=${join(root, '.test-profile')}`,

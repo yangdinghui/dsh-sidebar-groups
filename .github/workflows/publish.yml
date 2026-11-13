@@ -1,0 +1,46 @@
+name: Publish Package
+
+# 推 v* tag 时用 npm 的 Trusted Publishing（OIDC）发布，不需要任何长期 token。
+# 前提：在 npmjs.com 的包设置里为本仓库配置 Trusted Publisher：
+#   Organization or user: yangdinghui
+#   Repository:           dsh-sidebar-groups
+#   Workflow filename:    publish.yml
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write # Trusted Publishing（OIDC）必需
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false # 发布构建不要缓存
+
+      # tag 必须和 package.json 的版本一致，否则发出去的是错误版本
+      - name: Check tag matches package version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "v$VERSION" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json v$VERSION"
+            exit 1
+          fi
+
+      - name: Test
+        run: npm test
+
+      - name: Publish
+        run: npm publish # OIDC 令牌由 id-token: write 自动交换
