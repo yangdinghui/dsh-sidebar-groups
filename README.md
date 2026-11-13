@@ -87,6 +87,8 @@ dsh plugin --profile <profile> add ./dsh-sidebar-groups-0.1.0.tgz
 ## 兼容性
 
 - 面向 DSH **0.2.x**（`dsh-client-ui-sidebar` 提供 `panelList` / `panelRow` 的版本），Web 与桌面版通用。
+- **0.2.2 起外壳把每行包进 `div.panelEntry`**（行按钮 + 取消固定按钮），0.2.1 及更早是行按钮直挂 `nav`。
+  0.1.2 起两种结构都支持，升级外壳不会失效。
 - 故意不写死 `engines.dsh`：老版本上选择器落空时插件什么都不做，不会把侧边栏弄坏，也不会
   因为版本号把安装挡在门外。
 - 依赖侧边栏的 DOM 结构（`nav.panelList` / `button.panelRow` / 用 `aria-label` 取面板名）。

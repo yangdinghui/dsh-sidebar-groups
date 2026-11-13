@@ -17,7 +17,13 @@
     font: inherit; font-size: 14px; line-height: 22px; text-align: left; cursor: pointer;
   }
   .kB3qhq_panelRow:hover { background: rgba(127, 127, 127, .14); }
-  .kB3qhq_panelRow.panelActive { background: rgba(127, 127, 127, .2); }
+  /* 0.2.2 起每行外面多一层 panelEntry，里面是行按钮 + 取消固定按钮 */
+  .kB3qhq_panelEntry { display: flex; position: relative; border-radius: 8px; }
+  .kB3qhq_panelEntryWide > :first-child { flex: 1; min-width: 0; }
+  .kB3qhq_panelEntryWide .kB3qhq_panelRow { width: 100%; padding-right: 38px; }
+  .kB3qhq_panelEntry:hover { background: rgba(127, 127, 127, .14); }
+  .kB3qhq_panelEntryActive { background: rgba(127, 127, 127, .2); }
+  .kB3qhq_panelUnpin { position: absolute; top: 2px; right: 0; width: 28px; height: 28px; opacity: 0; }
   .kB3qhq_panelGlyph { display: inline-flex; width: 16px; }
   .kB3qhq_moreAnchor { display: flex; flex-direction: column; }
   #out { white-space: pre-wrap; font-family: ui-monospace, monospace; }
@@ -52,13 +58,20 @@
   const LABELS = ['插件', '插件市场', '自动化任务', '任务看板', '上下文洞察', '灵枢', '记忆系统'];
 
   function buildRow(label, active) {
+    const entry = document.createElement('div');
+    entry.className = 'kB3qhq_panelEntry kB3qhq_panelEntryWide' + (active ? ' kB3qhq_panelEntryActive' : '');
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'kB3qhq_panelRow' + (active ? ' panelActive' : '');
+    row.className = 'kB3qhq_panelRow';
     row.setAttribute('aria-label', label);
     // 与真实 Shell 一致：glyph 里放一个 16×16 的 SVG（不是文字），才能量出图标对齐。
     row.innerHTML = `<span class="kB3qhq_panelGlyph"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3"/></svg></span><span class="kB3qhq_panelTitle kB3qhq_wide">${label}</span>`;
-    return row;
+    const unpin = document.createElement('button');
+    unpin.type = 'button';
+    unpin.className = 'kB3qhq_panelUnpin';
+    unpin.setAttribute('aria-label', `取消固定 ${label}`);
+    entry.append(row, unpin);
+    return entry;
   }
 
   function buildNav() {
@@ -71,6 +84,32 @@
     const moreButton = document.createElement('button');
     moreButton.className = 'kB3qhq_panelRow';
     moreButton.setAttribute('aria-label', '更多');
+    moreButton.setAttribute('aria-haspopup', 'menu');
+    moreButton.textContent = '更多';
+    more.append(moreButton);
+    nav.append(more);
+    return nav;
+  }
+
+  /** 0.2.1 及更早的外壳：没有 panelEntry 包装，行按钮就是 nav 的直接子元素。 */
+  function buildLegacyNav() {
+    const nav = document.createElement('nav');
+    nav.className = 'kB3qhq_panelList';
+    nav.setAttribute('aria-label', '面板');
+    LABELS.forEach((label) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'kB3qhq_panelRow';
+      row.setAttribute('aria-label', label);
+      row.innerHTML = `<span class="kB3qhq_panelGlyph"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3"/></svg></span><span class="kB3qhq_panelTitle kB3qhq_wide">${label}</span>`;
+      nav.append(row);
+    });
+    const more = document.createElement('div');
+    more.className = 'kB3qhq_moreAnchor';
+    const moreButton = document.createElement('button');
+    moreButton.className = 'kB3qhq_panelRow';
+    moreButton.setAttribute('aria-label', '更多');
+    moreButton.setAttribute('aria-haspopup', 'menu');
     moreButton.textContent = '更多';
     more.append(moreButton);
     nav.append(more);
@@ -97,6 +136,11 @@
     return Array.from(document.querySelectorAll('nav button[class*="panelRow"]'))
       .find((row) => row.getAttribute('aria-label') === label);
   }
+  function entryByLabel(label) {
+    const entry = Array.from(document.querySelectorAll('nav [class*="panelEntry"]'))
+      .find((node) => node.querySelector('button[class*="panelRow"]')?.getAttribute('aria-label') === label);
+    return entry ?? rowByLabel(label);
+  }
   function header() {
     return document.querySelector('[data-dsh-fold-header]');
   }
@@ -104,7 +148,11 @@
     return document.querySelector('nav[class*="panelList"]');
   }
   function zoneOf(label) {
-    return rowByLabel(label).getAttribute('data-dsh-fold-zone');
+    return entryByLabel(label).getAttribute('data-dsh-fold-zone');
+  }
+  function headerControl() {
+    const root = header();
+    return root.matches('button') ? root : root.querySelector('button');
   }
   function dirState() {
     return window.__dshSidebarFoldDebug.state();
@@ -149,16 +197,16 @@
     check('未跟进工具组：更多仍可见', document.querySelector('.kB3qhq_moreAnchor')?.getAttribute('data-dsh-fold-zone') === null);
 
     // 3. order 关系：常驻 < 工具行 < 工具成员
-    const pinnedOrder = Number(rowByLabel('插件').style.order);
+    const pinnedOrder = Number(entryByLabel('插件').style.order);
     const headerOrder = Number(header().style.order);
-    const toolsOrder = Number(rowByLabel('任务看板').style.order);
+    const toolsOrder = Number(entryByLabel('任务看板').style.order);
     check('order 排序正确', pinnedOrder < headerOrder && headerOrder < toolsOrder,
       `${pinnedOrder} < ${headerOrder} < ${toolsOrder}`);
 
     // 4. 默认收起
-    check('默认收起', window.getComputedStyle(rowByLabel('任务看板')).display === 'none');
-    check('常驻行可见', window.getComputedStyle(rowByLabel('插件')).display !== 'none');
-    check('aria-expanded=false', header().getAttribute('aria-expanded') === 'false');
+    check('默认收起', window.getComputedStyle(entryByLabel('任务看板')).display === 'none');
+    check('常驻行可见', window.getComputedStyle(entryByLabel('插件')).display !== 'none');
+    check('aria-expanded=false', headerControl().getAttribute('aria-expanded') === 'false');
     check('折叠时工具行仍然可见', window.getComputedStyle(header()).display !== 'none');
 
     // 4.5 图标对齐：量 SVG 本身（不是外层 span——span 被 flex 居中不代表里面的图标居中）
@@ -179,10 +227,10 @@
     );
 
     // 5. 点击展开
-    header().click();
+    headerControl().click();
     await waitFrame();
-    check('点击后展开', window.getComputedStyle(rowByLabel('任务看板')).display !== 'none');
-    check('aria-expanded=true', header().getAttribute('aria-expanded') === 'true');
+    check('点击后展开', window.getComputedStyle(entryByLabel('任务看板')).display !== 'none');
+    check('aria-expanded=true', headerControl().getAttribute('aria-expanded') === 'true');
 
     // 6. 拖动：常驻行 → 工具行
     dragRowTo('自动化任务', null);
@@ -197,7 +245,7 @@
     check('从工具拉出并插到插件前', dirState().pinned.join(',') === '任务看板,插件', JSON.stringify(dirState().pinned));
     check('任务看板回到 pinned', zoneOf('任务看板') === 'pinned');
     check('pinned order 反映数组顺序',
-      Number(rowByLabel('任务看板').style.order) < Number(rowByLabel('插件').style.order));
+      Number(entryByLabel('任务看板').style.order) < Number(entryByLabel('插件').style.order));
 
     // 8. 拖动：常驻内换位
     dragRowTo('插件', '任务看板');
@@ -227,23 +275,23 @@
     await waitFrame();
     check('重建后「工具」行自动补回', header() !== null);
     check('重建后分组沿用状态', zoneOf('记忆系统') === 'pinned' && zoneOf('插件市场') === 'tools');
-    check('重建后恢复展开态', window.getComputedStyle(rowByLabel('插件市场')).display !== 'none');
+    check('重建后恢复展开态', window.getComputedStyle(entryByLabel('插件市场')).display !== 'none');
 
     // 12. 图标轨模式：隐藏「工具」行，且不隐藏工具成员
     document.getElementById('root').classList.add('kB3qhq_collapsed');
     await wait(30);
     await waitFrame();
     check('图标轨下隐藏工具行', header().hidden === true);
-    check('图标轨下不折叠工具成员', window.getComputedStyle(rowByLabel('插件市场')).display !== 'none');
+    check('图标轨下不折叠工具成员', window.getComputedStyle(entryByLabel('插件市场')).display !== 'none');
     document.getElementById('root').classList.remove('kB3qhq_collapsed');
     await wait(30);
     await waitFrame();
     check('退出图标轨后恢复', header().hidden === false);
 
     // 13. 折叠状态在自愈后仍然生效
-    header().click();
+    headerControl().click();
     await waitFrame();
-    check('再次收起', window.getComputedStyle(rowByLabel('插件市场')).display === 'none');
+    check('再次收起', window.getComputedStyle(entryByLabel('插件市场')).display === 'none');
 
     // 14. 模拟刷新页面：新的模块实例从 localStorage 恢复
     const beforeReload = dirState();
@@ -258,7 +306,15 @@
     await waitFrame();
     check('重载后恢复折叠状态', dirState().collapsed === beforeReload.collapsed, `${dirState().collapsed} vs ${beforeReload.collapsed}`);
     check('重载后恢复常驻列表', JSON.stringify(dirState().pinned) === JSON.stringify(beforeReload.pinned), JSON.stringify(dirState().pinned));
-    check('重载后按恢复状态渲染', window.getComputedStyle(rowByLabel('插件市场')).display === 'none');
+    check('重载后按恢复状态渲染', window.getComputedStyle(entryByLabel('插件市场')).display === 'none');
+
+    // 15. 旧外壳（0.2.1）兼容：换成没有 panelEntry 包装的结构，插件要照常接管
+    nav().replaceWith(buildLegacyNav());
+    await wait(150);
+    await waitFrame();
+    check('旧外壳下补回「工具」行', header() !== null);
+    check('旧外壳下「工具」行是按钮形态', header() !== null && header().matches('button'));
+    check('旧外壳下分组生效', zoneOf('插件市场') === 'tools' && zoneOf('插件') === 'pinned');
 
     const failed = results.filter((item) => !item.ok);
     const lines = results.map((item) => `${item.ok ? 'PASS' : 'FAIL'}  ${item.name}${item.detail ? '  [' + item.detail + ']' : ''}`);
